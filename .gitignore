@@ -1,0 +1,50 @@
+# Environment — never commit real secrets
+.env
+*.env.local
+
+# Local docker compose overrides (e.g. temporary LOG_LEVEL=debug for a soak) — never committed
+docker-compose.override.yml
+
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+frontend/.vite/
+frontend/packages/release/
+
+# TLS certs (generated locally or via Let's Encrypt)
+certs/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+.superpowers/
+output/
+
+# Go
+GoMailFlows/bin/
+GoMailFlows/tmp/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Docker volumes
+pgdata/
+redisdata/
+
+# SSL certs
+*.pem
+*.key

@@ -1,0 +1,41 @@
+[Unit]
+Description=HiTechCloud MailFlows - Email SaaS Platform
+Documentation=https://docs.hitechcloud.io/mailflows
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=mailflows
+Group=mailflows
+WorkingDirectory=/opt/mailflows
+ExecStart=/opt/mailflows/bin/mailflows
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mailflows
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mailflows/logs
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Environment
+EnvironmentFile=-/opt/mailflows/.env
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# Capability binding
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

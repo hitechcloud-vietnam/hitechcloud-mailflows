@@ -1,0 +1,1342 @@
+openapi: 3.1.0
+info:
+  title: HiTechCloud MailFlows API
+  version: 1.0.0
+  description: |
+    HiTechCloud MailFlows - Enterprise Email SaaS Platform API
+    
+    ## Features
+    - **Domain Management**: Register and manage email domains with automatic DNS provisioning
+    - **Email Accounts**: Create and manage email mailboxes
+    - **SMTP Configuration**: Per-domain or global SMTP relay configuration
+    - **JMAP Support**: Full JMAP protocol (RFC 8620/8621) for modern email access
+    - **Email Marketing**: Campaign management, subscriber lists, analytics
+    - **SaaS Packages**: Flexible service plans with granular feature control
+    - **Admin Panel**: Complete system administration capabilities
+    - **DNS Templates**: Customizable DNS record templates for domain provisioning
+    - **MCP Integration**: Model Context Protocol support for AI-powered management
+    
+    ## Authentication
+    All authenticated endpoints require a Bearer token in the Authorization header.
+    Obtain tokens via `/api/v1/auth/login` or `/api/v1/auth/register`.
+    
+    ## Rate Limiting
+    API endpoints are rate-limited. Limits vary by endpoint and user package.
+  contact:
+    name: HiTechCloud Support
+    url: https://hitechcloud.io/support
+    email: support@hitechcloud.io
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://api.mailflows.hitechcloud.io/api/v1
+    description: Production
+
+tags:
+  - name: auth
+    description: Authentication & authorization
+  - name: domains
+    description: Domain management
+  - name: email-accounts
+    description: Email account (mailbox) management
+  - name: mail
+    description: Email operations (send, read, manage)
+  - name: packages
+    description: Service packages/plans
+  - name: marketing
+    description: Email marketing campaigns & subscribers
+  - name: admin
+    description: Administration (admin only)
+  - name: smtp-config
+    description: SMTP configuration management (admin only)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ============================================================
+  # Authentication
+  # ============================================================
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout user
+      responses:
+        '200':
+          description: Logged out
+
+  /auth/change-password:
+    post:
+      tags: [auth]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+
+  # ============================================================
+  # Domains
+  # ============================================================
+  /domains:
+    get:
+      tags: [domains]
+      summary: List domains
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, verifying, active, failed, suspended]
+      responses:
+        '200':
+          description: Domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Domain'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+
+    post:
+      tags: [domains]
+      summary: Register a new domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDomainRequest'
+      responses:
+        '201':
+          description: Domain created with DNS records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '409':
+          description: Domain already registered
+
+  /domains/{id}:
+    get:
+      tags: [domains]
+      summary: Get domain details with DNS records
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Domain details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainWithRecords'
+
+    delete:
+      tags: [domains]
+      summary: Delete domain
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Domain deleted
+
+  /domains/{id}/verify:
+    post:
+      tags: [domains]
+      summary: Trigger domain verification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Verification results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCheckList'
+
+  /domains/{id}/dns/regenerate:
+    post:
+      tags: [domains]
+      summary: Regenerate DNS records
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: New DNS records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DNSRecord'
+
+  # ============================================================
+  # Email Accounts
+  # ============================================================
+  /email-accounts:
+    get:
+      tags: [email-accounts]
+      summary: List email accounts
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Account list
+
+    post:
+      tags: [email-accounts]
+      summary: Create email account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailAccountRequest'
+      responses:
+        '201':
+          description: Account created
+
+  /email-accounts/{id}:
+    put:
+      tags: [email-accounts]
+      summary: Update email account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmailAccountRequest'
+      responses:
+        '200':
+          description: Account updated
+
+    delete:
+      tags: [email-accounts]
+      summary: Delete email account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Account deleted
+
+  # ============================================================
+  # Mail Operations
+  # ============================================================
+  /mail/folders:
+    get:
+      tags: [mail]
+      summary: List mail folders
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Folder list
+
+  /mail/messages:
+    get:
+      tags: [mail]
+      summary: List messages
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: folder
+          in: query
+          schema:
+            type: string
+            default: INBOX
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message list
+
+  /mail/send:
+    post:
+      tags: [mail]
+      summary: Send email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+      responses:
+        '200':
+          description: Email sent
+
+  # ============================================================
+  # Packages
+  # ============================================================
+  /packages:
+    get:
+      tags: [packages]
+      summary: List service packages
+      security: []
+      parameters:
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Package list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Package'
+
+  /packages/feature-groups:
+    get:
+      tags: [packages]
+      summary: Get available feature groups
+      security: []
+      responses:
+        '200':
+          description: Feature groups map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+
+  /packages/{id}:
+    get:
+      tags: [packages]
+      summary: Get package details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Package details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+
+  # ============================================================
+  # Marketing
+  # ============================================================
+  /marketing/campaigns:
+    get:
+      tags: [marketing]
+      summary: List marketing campaigns
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, scheduled, sending, sent, paused, cancelled]
+      responses:
+        '200':
+          description: Campaign list
+
+    post:
+      tags: [marketing]
+      summary: Create marketing campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+      responses:
+        '201':
+          description: Campaign created
+
+  /marketing/campaigns/{id}/send:
+    post:
+      tags: [marketing]
+      summary: Send campaign now
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign queued
+
+  /marketing/campaigns/{id}/stats:
+    get:
+      tags: [marketing]
+      summary: Get campaign statistics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaign statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignStats'
+
+  /marketing/lists:
+    get:
+      tags: [marketing]
+      summary: List subscriber lists
+      responses:
+        '200':
+          description: List of subscriber lists
+
+    post:
+      tags: [marketing]
+      summary: Create subscriber list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListRequest'
+      responses:
+        '201':
+          description: List created
+
+  /marketing/subscribers/bulk:
+    post:
+      tags: [marketing]
+      summary: Bulk add subscribers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkAddSubscribersRequest'
+      responses:
+        '200':
+          description: Bulk add results
+
+  # ============================================================
+  # Admin
+  # ============================================================
+  /admin/dashboard:
+    get:
+      tags: [admin]
+      summary: Get admin dashboard statistics
+      responses:
+        '200':
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: List all users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User list
+
+  /admin/smtp-configs:
+    get:
+      tags: [smtp-config]
+      summary: List SMTP configurations
+      responses:
+        '200':
+          description: SMTP config list
+
+    post:
+      tags: [smtp-config]
+      summary: Create SMTP configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSMTPConfigRequest'
+      responses:
+        '201':
+          description: SMTP config created
+
+  /admin/dns-templates:
+    get:
+      tags: [admin]
+      summary: List DNS templates
+      responses:
+        '200':
+          description: DNS template list
+
+    post:
+      tags: [admin]
+      summary: Create DNS template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDNSTemplateRequest'
+      responses:
+        '201':
+          description: Template created
+
+  /admin/settings:
+    get:
+      tags: [admin]
+      summary: Get system settings
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Settings list
+
+  /admin/audit-logs:
+    get:
+      tags: [admin]
+      summary: Get audit logs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+        - name: action
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit log list
+
+# ============================================================
+# Webhooks
+# ============================================================
+  /webhooks:
+    get:
+      tags: [admin]
+      summary: List registered webhooks
+      responses:
+        '200':
+          description: Webhook list
+
+    post:
+      tags: [admin]
+      summary: Register a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                secret:
+                  type: string
+      responses:
+        '201':
+          description: Webhook registered
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token from /auth/login or /auth/register
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        first_name:
+          type: string
+        last_name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, reseller, user]
+        status:
+          type: string
+          enum: [active, suspended, pending, banned]
+        is_email_verified:
+          type: boolean
+        mfa_enabled:
+          type: boolean
+        package_id:
+          type: string
+          format: uuid
+          nullable: true
+        storage_used:
+          type: integer
+          format: int64
+        storage_quota:
+          type: integer
+          format: int64
+        max_email_accounts:
+          type: integer
+
+    Domain:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, verifying, active, failed, suspended]
+        mx_verified:
+          type: boolean
+        spf_verified:
+          type: boolean
+        dkim_verified:
+          type: boolean
+        dmarc_verified:
+          type: boolean
+        dkim_selector:
+          type: string
+        max_mailboxes:
+          type: integer
+        mailbox_count:
+          type: integer
+        catch_all_address:
+          type: string
+          nullable: true
+        smtp_config_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateDomainRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: FQDN domain name (e.g., example.com)
+        template_id:
+          type: string
+          format: uuid
+          description: DNS template ID to use
+
+    DomainWithRecords:
+      allOf:
+        - $ref: '#/components/schemas/Domain'
+        - type: object
+          properties:
+            dns_records:
+              type: array
+              items:
+                $ref: '#/components/schemas/DNSRecord'
+            check_list:
+              $ref: '#/components/schemas/DomainCheckList'
+
+    DNSRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [MX, A, AAAA, CNAME, TXT, SRV, CAA, NS]
+        host:
+          type: string
+        value:
+          type: string
+        priority:
+          type: integer
+          nullable: true
+        ttl:
+          type: integer
+        is_managed:
+          type: boolean
+        verified:
+          type: boolean
+
+    DomainCheckList:
+      type: object
+      properties:
+        mx_record:
+          $ref: '#/components/schemas/CheckItem'
+        spf_record:
+          $ref: '#/components/schemas/CheckItem'
+        dkim_record:
+          $ref: '#/components/schemas/CheckItem'
+        dmarc_record:
+          $ref: '#/components/schemas/CheckItem'
+        mta_sts:
+          $ref: '#/components/schemas/CheckItem'
+        tls_rpt:
+          $ref: '#/components/schemas/CheckItem'
+
+    CheckItem:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        required:
+          type: boolean
+        record:
+          type: string
+        value:
+          type: string
+        message:
+          type: string
+
+    CreateEmailAccountRequest:
+      type: object
+      required: [domain_id, local_part, password]
+      properties:
+        domain_id:
+          type: string
+          format: uuid
+        local_part:
+          type: string
+          description: Part before @ in email address
+        password:
+          type: string
+          minLength: 8
+        display_name:
+          type: string
+        storage_quota:
+          type: integer
+          format: int64
+          description: Storage quota in bytes
+
+    UpdateEmailAccountRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        is_enabled:
+          type: boolean
+        storage_quota:
+          type: integer
+          format: int64
+        max_send_per_day:
+          type: integer
+        forward_to:
+          type: string
+        auto_reply:
+          type: boolean
+        auto_reply_text:
+          type: string
+        password:
+          type: string
+          minLength: 8
+
+    SendEmailRequest:
+      type: object
+      required: [account_id, to, subject]
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+          minItems: 1
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body:
+          type: string
+        html_body:
+          type: string
+        reply_to:
+          type: string
+          format: email
+        in_reply_to:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              content_type:
+                type: string
+              content:
+                type: string
+                description: Base64 encoded content
+
+    Package:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        price_monthly:
+          type: number
+        price_yearly:
+          type: number
+        currency:
+          type: string
+        is_active:
+          type: boolean
+        is_public:
+          type: boolean
+        max_domains:
+          type: integer
+        max_mailboxes:
+          type: integer
+        max_aliases:
+          type: integer
+        max_storage_gb:
+          type: integer
+        max_send_per_day:
+          type: integer
+        max_recipients:
+          type: integer
+        features:
+          $ref: '#/components/schemas/PackageFeatures'
+        feature_groups:
+          type: array
+          items:
+            type: string
+
+    PackageFeatures:
+      type: object
+      properties:
+        imap_access:
+          type: boolean
+        pop3_access:
+          type: boolean
+        jmap_access:
+          type: boolean
+        smtp_relay:
+          type: boolean
+        webmail:
+          type: boolean
+        mobile_sync:
+          type: boolean
+        calendar:
+          type: boolean
+        contacts:
+          type: boolean
+        tasks:
+          type: boolean
+        email_forwarding:
+          type: boolean
+        auto_reply:
+          type: boolean
+        catch_all:
+          type: boolean
+        distribution_lists:
+          type: boolean
+        shared_mailboxes:
+          type: boolean
+        email_aliases:
+          type: boolean
+        anti_spam:
+          type: boolean
+        anti_virus:
+          type: boolean
+        encryption:
+          type: boolean
+        mfa:
+          type: boolean
+        audit_log:
+          type: boolean
+        dkim_signing:
+          type: boolean
+        email_marketing:
+          type: boolean
+        marketing_templates:
+          type: boolean
+        marketing_analytics:
+          type: boolean
+        marketing_automation:
+          type: boolean
+        ab_testing:
+          type: boolean
+        rest_api:
+          type: boolean
+        jmap_api:
+          type: boolean
+        webhooks:
+          type: boolean
+        custom_dns:
+          type: boolean
+        white_label:
+          type: boolean
+        priority_support:
+          type: boolean
+        sla_agreement:
+          type: boolean
+        dedicated_ip:
+          type: boolean
+
+    CreateCampaignRequest:
+      type: object
+      required: [name, subject, from_email]
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+        from_name:
+          type: string
+        from_email:
+          type: string
+          format: email
+        reply_to:
+          type: string
+          format: email
+        html_content:
+          type: string
+        plain_text:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CampaignStats:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        total_recipients:
+          type: integer
+        sent:
+          type: integer
+        opens:
+          type: integer
+        clicks:
+          type: integer
+        bounces:
+          type: integer
+        unsubscribes:
+          type: integer
+        spam_reports:
+          type: integer
+        open_rate:
+          type: number
+        click_rate:
+          type: number
+        bounce_rate:
+          type: number
+
+    CreateListRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    BulkAddSubscribersRequest:
+      type: object
+      required: [list_id, subscribers]
+      properties:
+        list_id:
+          type: string
+          format: uuid
+        subscribers:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [email]
+            properties:
+              email:
+                type: string
+                format: email
+              first_name:
+                type: string
+              last_name:
+                type: string
+              meta_data:
+                type: object
+                additionalProperties:
+                  type: string
+
+    CreateSMTPConfigRequest:
+      type: object
+      required: [name, host, port]
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        tls_port:
+          type: integer
+        username:
+          type: string
+        password:
+          type: string
+        auth_type:
+          type: string
+          enum: [plain, login, cram_md5, oauth2, none]
+        from_domain:
+          type: string
+        max_per_hour:
+          type: integer
+        max_per_day:
+          type: integer
+        is_global:
+          type: boolean
+        priority:
+          type: integer
+
+    CreateDNSTemplateRequest:
+      type: object
+      required: [name, records]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        is_default:
+          type: boolean
+        records:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [type, host, value]
+            properties:
+              type:
+                type: string
+                enum: [MX, A, AAAA, CNAME, TXT, SRV, CAA, NS]
+              host:
+                type: string
+                description: "Supports {{domain}} placeholder"
+              value:
+                type: string
+                description: "Supports {{domain}}, {{server_ip}}, {{dkim_public_key}} placeholders"
+              priority:
+                type: integer
+                nullable: true
+              ttl:
+                type: integer
+                default: 3600
+
+    DashboardStats:
+      type: object
+      properties:
+        total_users:
+          type: integer
+        active_users:
+          type: integer
+        total_domains:
+          type: integer
+        active_domains:
+          type: integer
+        total_mailboxes:
+          type: integer
+        total_smtp_configs:
+          type: integer
+        total_campaigns:
+          type: integer
+        total_subscribers:
+          type: integer
+        total_packages:
+          type: integer

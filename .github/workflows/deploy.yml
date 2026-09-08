@@ -1,0 +1,203 @@
+name: Deploy HiTechCloud MailFlows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DEPLOY_HOST: 116.118.2.52
+  DEPLOY_USER: root
+  DEPLOY_PATH: /opt/mailflows
+  GO_VERSION: '1.23'
+
+jobs:
+  # ============================================================
+  # Build & Test
+  # ============================================================
+  build:
+    name: Build Go Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: GoMailFlows/go.sum
+
+      - name: Build Go backend
+        working-directory: GoMailFlows
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/mailflows ./cmd/server
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mailflows-binary
+          path: GoMailFlows/bin/mailflows
+          retention-days: 7
+
+  # ============================================================
+  # Deploy to Server
+  # ============================================================
+  deploy:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mailflows-binary
+          path: deploy-artifacts/
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to server
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}"
+          SCP_CMD="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+
+          echo ">>> Creating deploy directory..."
+          $SSH_CMD "mkdir -p ${{ env.DEPLOY_PATH }}/{bin,configs,logs,web/static,web/templates}"
+
+          echo ">>> Stopping service..."
+          $SSH_CMD "systemctl stop mailflows 2>/dev/null || true"
+
+          echo ">>> Backing up current binary..."
+          $SSH_CMD "cp ${{ env.DEPLOY_PATH }}/bin/mailflows ${{ env.DEPLOY_PATH }}/bin/mailflows.bak 2>/dev/null || true"
+
+          echo ">>> Uploading new binary..."
+          $SCP_CMD deploy-artifacts/mailflows ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/bin/mailflows
+          $SSH_CMD "chmod +x ${{ env.DEPLOY_PATH }}/bin/mailflows"
+
+          echo ">>> Uploading config..."
+          $SCP_CMD GoMailFlows/configs/config.yaml ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/configs/config.yaml.production
+
+          echo ">>> Uploading systemd service..."
+          $SCP_CMD GoMailFlows/contrib/mailflows.service ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:/etc/systemd/system/mailflows.service
+
+          echo ">>> Uploading OpenAPI docs..."
+          $SCP_CMD GoMailFlows/docs/openapi.yaml ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/docs/openapi.yaml
+
+          echo ">>> Reloading systemd..."
+          $SSH_CMD "systemctl daemon-reload"
+
+          echo ">>> Starting service..."
+          $SSH_CMD "systemctl start mailflows"
+
+          echo ">>> Checking service status..."
+          sleep 3
+          $SSH_CMD "systemctl is-active mailflows"
+
+          echo ">>> Deployment complete!"
+
+      - name: Verify deployment
+        run: |
+          echo ">>> Verifying API health..."
+          for i in 1 2 3 4 5; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${{ env.DEPLOY_HOST }}:8080/health" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "API is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i: API returned $HTTP_CODE, retrying..."
+            sleep 5
+          done
+          echo "API health check failed"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}"
+          echo ">>> Rolling back..."
+          $SSH_CMD "cp ${{ env.DEPLOY_PATH }}/bin/mailflows.bak ${{ env.DEPLOY_PATH }}/bin/mailflows 2>/dev/null && systemctl restart mailflows || echo 'Rollback failed - manual intervention needed'"
+
+  # ============================================================
+  # Build Frontend
+  # ============================================================
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+
+  # ============================================================
+  # Deploy Frontend
+  # ============================================================
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [build-frontend, deploy]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend-dist/
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy frontend to server
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}"
+          SCP_CMD="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          RSYNC_CMD="rsync -avz --progress -e 'ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no'"
+
+          echo ">>> Creating web directory..."
+          $SSH_CMD "mkdir -p /opt/mailflows/web/static"
+
+          echo ">>> Uploading frontend..."
+          rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" frontend-dist/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:/opt/mailflows/web/static/
+
+          echo ">>> Frontend deployed!"

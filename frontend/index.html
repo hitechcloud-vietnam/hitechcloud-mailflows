@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>MailFlow</title>
+  <meta name="description" content="MailFlow — your unified inbox"/>
+  <meta name="theme-color" content="#7c6af7"/>
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="/manifest.json"/>
+
+  <!-- iOS home-screen PWA -->
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="MailFlow"/>
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="apple-touch-icon" href="/icon-512.png"/>
+
+  <!--
+    Self-hosted fonts — no external font requests. Generated into public/fonts/ by
+    scripts/selfhost-fonts, covering every family/weight/subset the app font sets and
+    chrome use. fonts.js only swaps CSS variables at runtime.
+  -->
+  <link rel="stylesheet" href="/fonts/fonts.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
