@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/hitechcloud/mailflows/internal/models"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/models"
 	"gorm.io/gorm"
 )
 

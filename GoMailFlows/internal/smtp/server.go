@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hitechcloud/mailflows/internal/config"
-	"github.com/hitechcloud/mailflows/internal/models"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/config"
 	"gorm.io/gorm"
 )
 

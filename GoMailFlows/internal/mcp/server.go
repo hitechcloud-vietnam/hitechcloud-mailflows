@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hitechcloud/mailflows/internal/config"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/config"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"gorm.io/gorm"

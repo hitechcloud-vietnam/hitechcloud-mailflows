@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/hitechcloud/mailflows/internal/config"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/config"
 	"gorm.io/gorm"
 )
 

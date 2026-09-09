@@ -8,17 +8,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/hitechcloud/mailflows/internal/api/router"
-	"github.com/hitechcloud/mailflows/internal/config"
-	"github.com/hitechcloud/mailflows/internal/database"
-	"github.com/hitechcloud/mailflows/internal/jmap"
-	"github.com/hitechcloud/mailflows/internal/mcp"
-	"github.com/hitechcloud/mailflows/internal/models"
-	"github.com/hitechcloud/mailflows/internal/smtp"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/api/router"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/config"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/database"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/jmap"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/mcp"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/models"
+	"github.com/hitechcloud-vietnam/hitechcloud-mailflows/internal/smtp"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // @title           HiTechCloud MailFlows API
@@ -153,8 +153,8 @@ func main() {
 	logger.Info("All servers stopped")
 }
 
-func seedDefaults(db *config.DatabaseConfig, cfg *config.Config) {
-	gormDB := database.DB
+func seedDefaults(db *gorm.DB, cfg *config.Config) {
+	gormDB := db
 
 	// Seed admin user
 	var adminCount int64
