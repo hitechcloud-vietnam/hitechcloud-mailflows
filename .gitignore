@@ -45,6 +45,11 @@ GoMailFlows/tmp/
 pgdata/
 redisdata/
 
-# SSL certs
+# SSL certs & Deploy keys
 *.pem
 *.key
+deploy_key
+deploy_key.pub
+deploy_key*
+id_rsa*
+id_ed25519*
