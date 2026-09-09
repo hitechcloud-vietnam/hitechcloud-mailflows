@@ -71,110 +71,152 @@ func Setup(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	// ============================================================
 	v1 := r.Group("/api/v1")
 
+	// Compatibility alias for /api routes expected by frontend
+	apiLegacy := r.Group("/api")
+
 	// --- Public routes ---
-	public := v1.Group("")
-	{
-		// Auth
-		public.POST("/auth/register", authHandler.Register)
-		public.POST("/auth/login", authHandler.Login)
-		public.POST("/auth/refresh", authHandler.RefreshToken)
+	setupPublicRoutes := func(g *gin.RouterGroup) {
+		g.POST("/auth/register", authHandler.Register)
+		g.POST("/auth/login", authHandler.Login)
+		g.POST("/auth/refresh", authHandler.RefreshToken)
+		g.GET("/auth/registration-status", func(c *gin.Context) {
+			c.JSON(200, gin.H{
+				"open":                  false,
+				"internalAuthDisabled": false,
+			})
+		})
+		g.GET("/auth/oidc/providers", func(c *gin.Context) {
+			c.JSON(200, gin.H{"providers": []string{}})
+		})
 
 		// Packages (public listing)
-		public.GET("/packages", pkgHandler.List)
-		public.GET("/packages/feature-groups", pkgHandler.GetFeatureGroups)
-		public.GET("/packages/:id", pkgHandler.Get)
+		g.GET("/packages", pkgHandler.List)
+		g.GET("/packages/feature-groups", pkgHandler.GetFeatureGroups)
+		g.GET("/packages/:id", pkgHandler.Get)
 
 		// Marketing unsubscribe (public link)
-		public.GET("/marketing/unsubscribe/:listId/:email", marketingHandler.Unsubscribe)
+		g.GET("/marketing/unsubscribe/:listId/:email", marketingHandler.Unsubscribe)
 	}
+
+	setupPublicRoutes(v1)
+	setupPublicRoutes(apiLegacy)
 
 	// --- Authenticated routes ---
-	auth := v1.Group("")
-	auth.Use(middleware.AuthMiddleware(&cfg.JWT))
-	{
+	setupAuthRoutes := func(g *gin.RouterGroup) {
+		g.Use(middleware.AuthMiddleware(&cfg.JWT))
+
 		// Auth
-		auth.GET("/auth/me", authHandler.Me)
-		auth.POST("/auth/logout", authHandler.Logout)
-		auth.POST("/auth/change-password", authHandler.ChangePassword)
+		g.GET("/auth/me", authHandler.Me)
+		g.POST("/auth/logout", authHandler.Logout)
+		g.POST("/auth/change-password", authHandler.ChangePassword)
+		g.GET("/auth/preferences", func(c *gin.Context) {
+			c.JSON(200, gin.H{
+				"theme":          "default",
+				"font":           "default",
+				"fontSize":       100,
+				"layout":         "comfortable",
+				"pageSize":       50,
+				"enabledPlugins": []string{},
+			})
+		})
+		g.PATCH("/auth/preferences", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "ok"})
+		})
+
+		// Accounts
+		g.GET("/accounts", func(c *gin.Context) {
+			c.JSON(200, []interface{}{})
+		})
+
+		// Mail unread counts
+		g.GET("/mail/unread-counts", func(c *gin.Context) {
+			c.JSON(200, gin.H{})
+		})
 
 		// Domains
-		auth.GET("/domains", domainHandler.List)
-		auth.POST("/domains", domainHandler.Create)
-		auth.GET("/domains/:id", domainHandler.Get)
-		auth.DELETE("/domains/:id", domainHandler.Delete)
-		auth.POST("/domains/:id/verify", domainHandler.Verify)
-		auth.POST("/domains/:id/dns/regenerate", domainHandler.RegenerateDNS)
+		g.GET("/domains", domainHandler.List)
+		g.POST("/domains", domainHandler.Create)
+		g.GET("/domains/:id", domainHandler.Get)
+		g.DELETE("/domains/:id", domainHandler.Delete)
+		g.POST("/domains/:id/verify", domainHandler.Verify)
+		g.POST("/domains/:id/dns/regenerate", domainHandler.RegenerateDNS)
 
 		// Email Accounts
-		auth.GET("/email-accounts", emailHandler.List)
-		auth.POST("/email-accounts", emailHandler.Create)
-		auth.PUT("/email-accounts/:id", emailHandler.Update)
-		auth.DELETE("/email-accounts/:id", emailHandler.Delete)
+		g.GET("/email-accounts", emailHandler.List)
+		g.POST("/email-accounts", emailHandler.Create)
+		g.PUT("/email-accounts/:id", emailHandler.Update)
+		g.DELETE("/email-accounts/:id", emailHandler.Delete)
 
 		// Mail operations
-		auth.GET("/mail/folders", mailHandler.ListFolders)
-		auth.GET("/mail/messages", mailHandler.ListMessages)
-		auth.GET("/mail/messages/:id", mailHandler.GetMessage)
-		auth.POST("/mail/send", mailHandler.SendMessage)
-		auth.PUT("/mail/messages/:id/read", mailHandler.MarkRead)
-		auth.PUT("/mail/messages/:id/unread", mailHandler.MarkUnread)
-		auth.DELETE("/mail/messages/:id", mailHandler.DeleteMessage)
-		auth.POST("/mail/messages/:id/move", mailHandler.MoveMessage)
+		g.GET("/mail/folders", mailHandler.ListFolders)
+		g.GET("/mail/messages", mailHandler.ListMessages)
+		g.GET("/mail/messages/:id", mailHandler.GetMessage)
+		g.POST("/mail/send", mailHandler.SendMessage)
+		g.PUT("/mail/messages/:id/read", mailHandler.MarkRead)
+		g.PUT("/mail/messages/:id/unread", mailHandler.MarkUnread)
+		g.DELETE("/mail/messages/:id", mailHandler.DeleteMessage)
+		g.POST("/mail/messages/:id/move", mailHandler.MoveMessage)
 
 		// Marketing
-		auth.GET("/marketing/campaigns", marketingHandler.ListCampaigns)
-		auth.POST("/marketing/campaigns", marketingHandler.CreateCampaign)
-		auth.GET("/marketing/campaigns/:id", marketingHandler.GetCampaign)
-		auth.POST("/marketing/campaigns/:id/schedule", marketingHandler.ScheduleCampaign)
-		auth.POST("/marketing/campaigns/:id/send", marketingHandler.SendCampaign)
-		auth.GET("/marketing/campaigns/:id/stats", marketingHandler.CampaignStats)
-		auth.GET("/marketing/lists", marketingHandler.Lists)
-		auth.POST("/marketing/lists", marketingHandler.CreateList)
-		auth.POST("/marketing/lists/:listId/subscribers", marketingHandler.AddSubscriber)
-		auth.POST("/marketing/subscribers/bulk", marketingHandler.BulkAddSubscribers)
+		g.GET("/marketing/campaigns", marketingHandler.ListCampaigns)
+		g.POST("/marketing/campaigns", marketingHandler.CreateCampaign)
+		g.GET("/marketing/campaigns/:id", marketingHandler.GetCampaign)
+		g.POST("/marketing/campaigns/:id/schedule", marketingHandler.ScheduleCampaign)
+		g.POST("/marketing/campaigns/:id/send", marketingHandler.SendCampaign)
+		g.GET("/marketing/campaigns/:id/stats", marketingHandler.CampaignStats)
+		g.GET("/marketing/lists", marketingHandler.Lists)
+		g.POST("/marketing/lists", marketingHandler.CreateList)
+		g.POST("/marketing/lists/:listId/subscribers", marketingHandler.AddSubscriber)
+		g.POST("/marketing/subscribers/bulk", marketingHandler.BulkAddSubscribers)
 
 		// Packages (authenticated)
-		auth.PUT("/packages/:id", pkgHandler.Update)
+		g.PUT("/packages/:id", pkgHandler.Update)
 	}
+
+	setupAuthRoutes(v1)
+	setupAuthRoutes(apiLegacy)
 
 	// --- Admin routes ---
-	admin := v1.Group("/admin")
-	admin.Use(middleware.AuthMiddleware(&cfg.JWT))
-	admin.Use(middleware.AdminMiddleware())
-	{
+	setupAdminRoutes := func(g *gin.RouterGroup) {
+		g.Use(middleware.AuthMiddleware(&cfg.JWT))
+		g.Use(middleware.AdminMiddleware())
+
 		// Dashboard
-		admin.GET("/dashboard", adminHandler.Dashboard)
+		g.GET("/dashboard", adminHandler.Dashboard)
 
 		// Users
-		admin.GET("/users", adminHandler.ListUsers)
-		admin.PUT("/users/:id", adminHandler.UpdateUser)
-		admin.POST("/users/:id/suspend", adminHandler.SuspendUser)
-		admin.POST("/users/:id/activate", adminHandler.ActivateUser)
+		g.GET("/users", adminHandler.ListUsers)
+		g.PUT("/users/:id", adminHandler.UpdateUser)
+		g.POST("/users/:id/suspend", adminHandler.SuspendUser)
+		g.POST("/users/:id/activate", adminHandler.ActivateUser)
 
 		// SMTP Configs
-		admin.GET("/smtp-configs", smtpHandler.List)
-		admin.POST("/smtp-configs", smtpHandler.Create)
-		admin.PUT("/smtp-configs/:id", smtpHandler.Update)
-		admin.DELETE("/smtp-configs/:id", smtpHandler.Delete)
-		admin.POST("/smtp-configs/:id/assign", smtpHandler.AssignToDomain)
-		admin.POST("/smtp-configs/:id/test", smtpHandler.TestConnection)
+		g.GET("/smtp-configs", smtpHandler.List)
+		g.POST("/smtp-configs", smtpHandler.Create)
+		g.PUT("/smtp-configs/:id", smtpHandler.Update)
+		g.DELETE("/smtp-configs/:id", smtpHandler.Delete)
+		g.POST("/smtp-configs/:id/assign", smtpHandler.AssignToDomain)
+		g.POST("/smtp-configs/:id/test", smtpHandler.TestConnection)
 
 		// Packages
-		admin.POST("/packages", pkgHandler.Create)
+		g.POST("/packages", pkgHandler.Create)
 
 		// DNS Templates
-		admin.GET("/dns-templates", adminHandler.ListDNSTemplates)
-		admin.POST("/dns-templates", adminHandler.CreateDNSTemplate)
-		admin.PUT("/dns-templates/:id", adminHandler.UpdateDNSTemplate)
-		admin.DELETE("/dns-templates/:id", adminHandler.DeleteDNSTemplate)
+		g.GET("/dns-templates", adminHandler.ListDNSTemplates)
+		g.POST("/dns-templates", adminHandler.CreateDNSTemplate)
+		g.PUT("/dns-templates/:id", adminHandler.UpdateDNSTemplate)
+		g.DELETE("/dns-templates/:id", adminHandler.DeleteDNSTemplate)
 
 		// System Settings
-		admin.GET("/settings", adminHandler.GetSettings)
-		admin.PUT("/settings/:key", adminHandler.UpdateSetting)
+		g.GET("/settings", adminHandler.GetSettings)
+		g.PUT("/settings/:key", adminHandler.UpdateSetting)
 
 		// Audit Logs
-		admin.GET("/audit-logs", adminHandler.GetAuditLogs)
+		g.GET("/audit-logs", adminHandler.GetAuditLogs)
 	}
+
+	setupAdminRoutes(v1.Group("/admin"))
+	setupAdminRoutes(apiLegacy.Group("/admin"))
 
 	return r
 }

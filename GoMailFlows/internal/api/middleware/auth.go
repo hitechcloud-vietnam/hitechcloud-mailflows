@@ -88,7 +88,10 @@ func extractToken(c *gin.Context) string {
 	}
 
 	// Check cookie
-	if cookie, err := c.Cookie("access_token"); err == nil {
+	if cookie, err := c.Cookie("mf_token"); err == nil && cookie != "" {
+		return cookie
+	}
+	if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
 		return cookie
 	}
 

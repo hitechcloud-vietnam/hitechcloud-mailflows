@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,8 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -53,12 +55,16 @@ type TokenResponse struct {
 type UserResponse struct {
 	ID               string  `json:"id"`
 	Email            string  `json:"email"`
+	Username         string  `json:"username"`
+	DisplayName      string  `json:"displayName"`
 	FirstName        string  `json:"first_name"`
 	LastName         string  `json:"last_name"`
 	Role             string  `json:"role"`
 	Status           string  `json:"status"`
+	IsAdmin          bool    `json:"isAdmin"`
 	IsEmailVerified  bool    `json:"is_email_verified"`
 	MFAEnabled       bool    `json:"mfa_enabled"`
+	TotpEnabled      bool    `json:"totpEnabled"`
 	PackageID        *string `json:"package_id,omitempty"`
 	StorageUsed      int64   `json:"storage_used"`
 	StorageQuota     int64   `json:"storage_quota"`
@@ -66,15 +72,23 @@ type UserResponse struct {
 }
 
 func toUserResponse(u *models.User) UserResponse {
+	displayName := strings.TrimSpace(u.FirstName + " " + u.LastName)
+	if displayName == "" {
+		displayName = u.Email
+	}
 	resp := UserResponse{
 		ID:               u.ID.String(),
 		Email:            u.Email,
+		Username:         u.Email,
+		DisplayName:      displayName,
 		FirstName:        u.FirstName,
 		LastName:         u.LastName,
 		Role:             string(u.Role),
 		Status:           string(u.Status),
+		IsAdmin:          u.Role == models.RoleAdmin,
 		IsEmailVerified:  u.IsEmailVerified,
 		MFAEnabled:       u.MFAEnabled,
+		TotpEnabled:      u.MFAEnabled,
 		StorageUsed:      u.StorageUsed,
 		StorageQuota:     u.StorageQuota,
 		MaxEmailAccounts: u.MaxEmailAccounts,
@@ -166,8 +180,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	loginIdentifier := strings.ToLower(strings.TrimSpace(req.Email))
+	if loginIdentifier == "" {
+		loginIdentifier = strings.ToLower(strings.TrimSpace(req.Username))
+	}
+	if loginIdentifier == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or email is required"})
+		return
+	}
+
 	var user models.User
-	if err := h.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+	if err := h.db.Where("LOWER(email) = ?", loginIdentifier).First(&user).Error; err != nil {
 		h.logAuthEvent(nil, models.AuthEventLogin, c, false, "user not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
@@ -198,7 +221,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	h.logAuthEvent(&user.ID, models.AuthEventLogin, c, true, "")
-	c.JSON(http.StatusOK, tokenResp)
+
+	// Set httpOnly session cookie for web client
+	c.SetCookie("mf_token", tokenResp.AccessToken, 7*24*3600, "/", "", false, true)
+
+	userResp := toUserResponse(&user)
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  tokenResp.AccessToken,
+		"refresh_token": tokenResp.RefreshToken,
+		"expires_in":    tokenResp.ExpiresIn,
+		"token_type":    tokenResp.TokenType,
+		"user":          userResp,
+	})
 }
 
 // ============================================================
@@ -269,7 +303,8 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toUserResponse(&user))
+	userResp := toUserResponse(&user)
+	c.JSON(http.StatusOK, gin.H{"user": userResp})
 }
 
 // ============================================================
@@ -288,6 +323,8 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	h.db.Model(&models.RefreshToken{}).
 		Where("user_id = ? AND revoked = false", userID).
 		Update("revoked", true)
+
+	c.SetCookie("mf_token", "", -1, "/", "", false, true)
 
 	h.logAuthEvent(&userID, models.AuthEventLogout, c, true, "")
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
