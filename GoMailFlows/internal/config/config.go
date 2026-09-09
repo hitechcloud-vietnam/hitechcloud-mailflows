@@ -153,6 +153,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("marketing.max_recipients_per_campaign", 10000)
 	viper.SetDefault("marketing.bounce_threshold", 5)
 
+	viper.SetDefault("admin.default_email", "admin@hitechcloud.io")
+	viper.SetDefault("admin.default_password", "Admin@123456")
+
 	viper.SetDefault("mcp.enabled", true)
 	viper.SetDefault("mcp.host", "0.0.0.0")
 	viper.SetDefault("mcp.port", 8082)
