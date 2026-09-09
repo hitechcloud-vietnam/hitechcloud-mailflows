@@ -152,9 +152,10 @@ jobs:
           echo ">>> Uploading systemd service..."
           $SCP GoMailFlows/contrib/mailflows.service ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:/etc/systemd/system/mailflows.service
 
-          # 7. Upload OpenAPI docs
-          echo ">>> Uploading docs..."
+          # 7. Upload OpenAPI docs & default config if not exists
+          echo ">>> Uploading docs and config templates..."
           $SCP GoMailFlows/docs/openapi.yaml ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/docs/
+          $SSH "[ -f ${{ env.DEPLOY_PATH }}/configs/config.yaml ] || cp GoMailFlows/configs/config.yaml ${{ env.DEPLOY_PATH }}/configs/config.yaml 2>/dev/null || true"
 
           # 8. Reload and start
           echo ">>> Starting service..."
